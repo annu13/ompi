@@ -1,5 +1,7 @@
 /*
  * Copyright (C) Mellanox Technologies Ltd. 2001-2011.  ALL RIGHTS RESERVED.
+ * Copyright (c) 2015      Los Alamos National Security, LLC.  All rights
+ *                         reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -24,8 +26,11 @@
 #include <unistd.h>
 
 static int ompi_mtl_mxm_component_open(void);
+static int ompi_mtl_mxm_component_query(mca_base_module_t **module, int *priority);
 static int ompi_mtl_mxm_component_close(void);
 static int ompi_mtl_mxm_component_register(void);
+
+static int param_priority;
 
 int mca_mtl_mxm_output = -1;
 
@@ -48,7 +53,7 @@ mca_mtl_mxm_component_t mca_mtl_mxm_component = {
         OMPI_RELEASE_VERSION, /* MCA component release version */
         ompi_mtl_mxm_component_open, /* component open */
         ompi_mtl_mxm_component_close, /* component close */
-        NULL,
+        ompi_mtl_mxm_component_query, /* component query */
         ompi_mtl_mxm_component_register
     },
     {
@@ -124,6 +129,15 @@ static int ompi_mtl_mxm_component_register(void)
 #if MXM_API < MXM_VERSION(3,0)
     free(runtime_version);
 #endif
+
+    param_priority = 100;
+    (void) mca_base_component_var_register (c,
+                                            "priority", "Priority of the MXM MTL component",
+                                            MCA_BASE_VAR_TYPE_INT, NULL, 0, 0,
+                                            OPAL_INFO_LVL_9,
+                                            MCA_BASE_VAR_SCOPE_READONLY,
+                                            &param_priority);
+
 
 #if MXM_API >= MXM_VERSION(3,1)
 {
@@ -242,6 +256,18 @@ static int ompi_mtl_mxm_component_open(void)
         return OPAL_ERR_NOT_AVAILABLE;
     }
 
+    return OMPI_SUCCESS;
+}
+
+static int ompi_mtl_mxm_component_query(mca_base_module_t **module, int *priority)
+{
+
+    /*
+     * if we get here it means that mxm is available so give high priority
+     */
+
+    *priority = param_priority;
+    *module = (mca_base_module_t *)&ompi_mtl_mxm.super;
     return OMPI_SUCCESS;
 }
 

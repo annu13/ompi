@@ -32,9 +32,9 @@ typedef struct _dist_graph_elem {
 } mca_topo_base_dist_graph_elem_t;
 
 int mca_topo_base_dist_graph_distribute(mca_topo_base_module_t* module,
-                                        ompi_communicator_t *comm, 
+                                        ompi_communicator_t *comm,
                                         int n, int nodes[],
-                                        int degrees[], int targets[], 
+                                        int degrees[], int targets[],
                                         int weights[],
                                         mca_topo_base_comm_dist_graph_2_2_0_t** ptopo)
 {
@@ -54,7 +54,7 @@ int mca_topo_base_dist_graph_distribute(mca_topo_base_module_t* module,
      * In addition we compute 3 arrays (that are allocated in one go):
      * - cnt: the number of elements for a peer
      * - pos: the position of the first element for a peer
-     * - idx: temporaru indexes and message count after the reduce.
+     * - idx: temporary indexes and message count after the reduce.
      */
     cnt = (mca_topo_base_dist_graph_elem_t*)calloc(3 * csize, sizeof(mca_topo_base_dist_graph_elem_t));
     if( NULL == cnt ) {
@@ -118,8 +118,8 @@ int mca_topo_base_dist_graph_distribute(mca_topo_base_module_t* module,
                                                   comm->c_coll.coll_allreduce_module);
     /**
      * At this point in the indexes array we have:
-     * - indexes[0] total number of in edges
-     * - indexes[1] total number of out edges
+     * - idx[0].in  total number of IN  edges
+     * - idx[0].out total number of OUT edges
      */
     topo = OBJ_NEW(mca_topo_base_comm_dist_graph_2_2_0_t);
     if( NULL == topo ) {
@@ -134,7 +134,7 @@ int mca_topo_base_dist_graph_distribute(mca_topo_base_module_t* module,
         if (NULL == topo->in) {
             err = OMPI_ERR_OUT_OF_RESOURCE;
             goto bail_out;
-        }    
+        }
         if (MPI_UNWEIGHTED != weights) {
             topo->inw = (int*)malloc(sizeof(int) * topo->indegree);
             if (NULL == topo->inw) {
@@ -148,7 +148,7 @@ int mca_topo_base_dist_graph_distribute(mca_topo_base_module_t* module,
         if (NULL == topo->out) {
             err = OMPI_ERR_OUT_OF_RESOURCE;
             goto bail_out;
-        }    
+        }
         if (MPI_UNWEIGHTED != weights) {
             topo->outw = (int*)malloc(sizeof(int) * topo->outdegree);
             if (NULL == topo->outw) {
@@ -279,11 +279,11 @@ int mca_topo_base_dist_graph_distribute(mca_topo_base_module_t* module,
 }
 
 int mca_topo_base_dist_graph_create(mca_topo_base_module_t* module,
-                                    ompi_communicator_t *comm_old, 
+                                    ompi_communicator_t *comm_old,
                                     int n, int nodes[],
-                                    int degrees[], int targets[], 
+                                    int degrees[], int targets[],
                                     int weights[],
-                                    ompi_info_t *info, int reorder, 
+                                    ompi_info_t *info, int reorder,
                                     ompi_communicator_t **newcomm)
 {
     int err;
@@ -292,20 +292,21 @@ int mca_topo_base_dist_graph_create(mca_topo_base_module_t* module,
     ompi_communicator_t *new_comm;
     mca_topo_base_comm_dist_graph_2_2_0_t* topo;
 
+
+    num_procs = ompi_comm_size(comm_old);
     topo_procs = (ompi_proc_t**)malloc(num_procs * sizeof(ompi_proc_t *));
     if (NULL == topo_procs) {
         return OMPI_ERR_OUT_OF_RESOURCE;
     }
-    num_procs = ompi_comm_size(comm_old);
     new_comm = ompi_comm_allocate(num_procs, 0);
     if (NULL == new_comm) {
         free(topo_procs);
         return OMPI_ERR_OUT_OF_RESOURCE;
     }
     err = mca_topo_base_dist_graph_distribute(module,
-                                              comm_old, 
+                                              comm_old,
                                               n, nodes,
-                                              degrees, targets, 
+                                              degrees, targets,
                                               weights,
                                               &topo);
     if( OMPI_SUCCESS != err ) {
@@ -318,7 +319,7 @@ int mca_topo_base_dist_graph_create(mca_topo_base_module_t* module,
        must be set before invoking ompi_comm_enable */
     rank = ompi_comm_rank(comm_old);
     if(OMPI_GROUP_IS_DENSE(comm_old->c_local_group)) {
-        memcpy(topo_procs, 
+        memcpy(topo_procs,
                comm_old->c_local_group->grp_proc_pointers,
                num_procs * sizeof(ompi_proc_t *));
     } else {

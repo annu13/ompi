@@ -11,7 +11,7 @@
  *                         All rights reserved.
  * Copyright (c) 2006      Sandia National Laboratories. All rights
  *                         reserved.
- * Copyright (c) 2013-2014 Cisco Systems, Inc.  All rights reserved.
+ * Copyright (c) 2013-2015 Cisco Systems, Inc.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -24,11 +24,8 @@
 
 #define OPAL_BTL_USNIC_FRAG_ALIGN (8)
 
-#include <infiniband/verbs.h>
-
 #include "btl_usnic.h"
 #include "btl_usnic_module.h"
-
 
 BEGIN_C_DECLS
 
@@ -76,31 +73,42 @@ typedef enum {
 } opal_btl_usnic_seg_type_t;
 
 static inline const char *
-usnic_seg_type(opal_btl_usnic_seg_type_t t)
+usnic_seg_type_str(opal_btl_usnic_seg_type_t t)
 {
     switch (t) {
-    case OPAL_BTL_USNIC_SEG_ACK: return "ACK";
-    case OPAL_BTL_USNIC_SEG_FRAG: return "FRAG";
+    case OPAL_BTL_USNIC_SEG_ACK:   return "ACK";
+    case OPAL_BTL_USNIC_SEG_FRAG:  return "FRAG";
     case OPAL_BTL_USNIC_SEG_CHUNK: return "CHUNK";
-    case OPAL_BTL_USNIC_SEG_RECV: return "RECV";
-    default: return "unknown";
+    case OPAL_BTL_USNIC_SEG_RECV:  return "RECV";
+    default:                       return "unknown";
     }
 }
 
 
+/*
+ * usnic registration handle (passed over the network to peers as a
+ * cookie).
+ *
+ * Currently, this struct is meaningless (but it must be defined /
+ * exist) because we are emulating RDMA and do not have
+ * btl_register_mem and btl_deregister_mem functions (and we set
+ * module.btl_registration_handle_size to 0, not sizeof(struct
+ * mca_btl_base_registration_handle_t)).
+ */
+struct mca_btl_base_registration_handle_t {
+    /* Maybe we'll need fields like this */
+    uint32_t lkey;
+    uint32_t rkey;
+};
+
+/*
+ * usnic local registration
+ */
 typedef struct opal_btl_usnic_reg_t {
     mca_mpool_base_registration_t base;
-    struct ibv_mr* mr;
+    struct fid_mr *ur_mr;
 } opal_btl_usnic_reg_t;
 
-
-/* UDP headers are always 42 bytes long */
-#define OPAL_BTL_USNIC_UDP_HDR_SZ (42)
-
-#define OPAL_BTL_USNIC_PROTO_HDR_SZ    \
-    (mca_btl_usnic_component.use_udp ? \
-     OPAL_BTL_USNIC_UDP_HDR_SZ :       \
-     sizeof(struct ibv_grh))
 
 /**
  * usnic header type
@@ -156,15 +164,12 @@ typedef struct {
 
 /**
  * Descriptor for a common segment.  This is exactly one packet and may
- * be send or receive
+ * be sent or received.
  */
 typedef struct opal_btl_usnic_segment_t {
     ompi_free_list_item_t us_list;
 
     opal_btl_usnic_seg_type_t us_type;
-
-    /* allow for 2 SG entries */
-    struct ibv_sge us_sg_entry[2];
 
     /* header for chunked frag is different */
     union {
@@ -193,11 +198,11 @@ typedef struct opal_btl_usnic_recv_segment_t {
 
     /* receive segments have protocol header prepended */
     uint8_t *rs_protocol_header;
+    size_t rs_len;
+
+    struct opal_btl_usnic_recv_segment_t *rs_next;
 
     opal_btl_usnic_endpoint_t *rs_endpoint;
-
-    /* verbs recv desc */
-    struct ibv_recv_wr rs_recv_desc;
 
 } opal_btl_usnic_recv_segment_t;
 
@@ -208,8 +213,8 @@ typedef struct opal_btl_usnic_recv_segment_t {
 typedef struct opal_btl_usnic_send_segment_t {
     opal_btl_usnic_segment_t ss_base;
 
-    /* verbs send desc */
-    struct ibv_send_wr ss_send_desc;
+    uint8_t *ss_ptr;
+    size_t ss_len;
 
     /* channel upon which send was posted */
     opal_btl_usnic_channel_id_t ss_channel;
@@ -235,7 +240,7 @@ typedef struct opal_btl_usnic_frag_t {
     /* fragment descriptor type */
     opal_btl_usnic_frag_type_t uf_type;
 
-    /* utility segments */
+    /* utility segments (just seg_addr/seg_len) */
     mca_btl_base_segment_t uf_local_seg[2];
     mca_btl_base_segment_t uf_remote_seg[1];
 
@@ -295,7 +300,6 @@ typedef struct opal_btl_usnic_large_send_frag_t {
 /* Shortcut member macros.  Access uf_src_seg array instead of the descriptor's
  * des_src ptr to save a deref. */
 #define lsf_des_src       lsf_base.sf_base.uf_local_seg
-#define lsf_des_local_cnt lsf_base.sf_base.uf_base.des_local_count
 
 /**
  * small send fragment
@@ -469,14 +473,11 @@ opal_btl_usnic_frag_return(
         }
         lfrag->lsf_pack_on_the_fly = false;
 
-        if (2 == lfrag->lsf_des_local_cnt &&
+        /* JMS This should never happen any more, right? */
+        if (2 == lfrag->lsf_base.sf_base.uf_base.USNIC_SEND_LOCAL_COUNT &&
             NULL == lfrag->lsf_des_src[1].seg_addr.pval) {
             opal_convertor_cleanup(&lfrag->lsf_base.sf_convertor);
         }
-    } else if (frag->uf_type == OPAL_BTL_USNIC_FRAG_SMALL_SEND) {
-        opal_btl_usnic_small_send_frag_t *sfrag;
-        sfrag = (opal_btl_usnic_small_send_frag_t *)frag;
-        sfrag->ssf_segment.ss_send_desc.send_flags &= ~IBV_SEND_INLINE;
     }
 
     OMPI_FREE_LIST_RETURN_MT(frag->uf_freelist, &(frag->uf_base.super));
@@ -531,7 +532,6 @@ opal_btl_usnic_chunk_segment_alloc(
 
     seg = (opal_btl_usnic_send_segment_t*) item;
     seg->ss_channel = USNIC_DATA_CHANNEL;
-    seg->ss_send_desc.send_flags = IBV_SEND_SIGNALED;
 
     assert(seg);
     assert(OPAL_BTL_USNIC_SEG_CHUNK == seg->ss_base.us_type);
@@ -566,7 +566,6 @@ opal_btl_usnic_ack_segment_alloc(opal_btl_usnic_module_t *module)
 
     ack = (opal_btl_usnic_ack_segment_t*) item;
     ack->ss_channel = USNIC_PRIORITY_CHANNEL;
-    ack->ss_send_desc.send_flags = IBV_SEND_SIGNALED;
 
     assert(ack);
     assert(OPAL_BTL_USNIC_SEG_ACK == ack->ss_base.us_type);
@@ -588,34 +587,29 @@ opal_btl_usnic_ack_segment_return(
     OMPI_FREE_LIST_RETURN_MT(&(module->ack_segs), &(ack->ss_base.us_list));
 }
 
-/* returns the expected L2 packet size in bytes for the given FRAG recv
- * segment, based on the payload_len */
-static inline uint32_t
-opal_btl_usnic_frag_seg_proto_size(opal_btl_usnic_recv_segment_t *rseg)
+/* Compute and set the proper value for sfrag->sf_size.  This must not be used
+ * during usnic_alloc, since the PML might change the segment size after
+ * usnic_alloc returns. */
+static inline void
+opal_btl_usnic_compute_sf_size(opal_btl_usnic_send_frag_t *sfrag)
 {
-    opal_btl_usnic_segment_t *bseg = &rseg->rs_base;
+    opal_btl_usnic_frag_t *frag;
 
-    MSGDEBUG1_OUT("us_type=%d\n", bseg->us_type);
-    assert(OPAL_BTL_USNIC_PAYLOAD_TYPE_FRAG == bseg->us_btl_header->payload_type);
+    frag = &sfrag->sf_base;
 
-    return (OPAL_BTL_USNIC_PROTO_HDR_SZ +
-            sizeof(*bseg->us_btl_header) +
-            bseg->us_btl_header->payload_len);
-}
+    /* JMS This can be a put or a send, and the buffers are different... */
+#if 0
+    assert(frag->uf_base.USNIC_SEND_LOCAL_COUNT > 0);
+    assert(frag->uf_base.USNIC_SEND_LOCAL_COUNT <= 2);
 
-/* returns the expected L2 packet size in bytes for the given CHUNK recv
- * segment, based on the payload_len */
-static inline uint32_t
-opal_btl_usnic_chunk_seg_proto_size(opal_btl_usnic_recv_segment_t *rseg)
-{
-    opal_btl_usnic_segment_t *bseg = &rseg->rs_base;
+    /* belt and suspenders: second len should be zero if only one SGE */
+    assert(2 == frag->uf_base.USNIC_SEND_LOCAL_COUNT ||
+        0 == frag->uf_local_seg[1].seg_len);
+#endif
 
-    assert(OPAL_BTL_USNIC_PAYLOAD_TYPE_CHUNK ==
-           bseg->us_btl_chunk_header->ch_hdr.payload_type);
-
-    return (OPAL_BTL_USNIC_PROTO_HDR_SZ +
-            sizeof(*bseg->us_btl_chunk_header) +
-            bseg->us_btl_chunk_header->ch_hdr.payload_len);
+    sfrag->sf_size = 0;
+    sfrag->sf_size += frag->uf_local_seg[0].seg_len;
+    sfrag->sf_size += frag->uf_local_seg[1].seg_len;
 }
 
 END_C_DECLS

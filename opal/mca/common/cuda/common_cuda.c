@@ -39,6 +39,7 @@
 
 #include "opal/mca/mpool/base/base.h"
 #include "opal/runtime/opal_params.h"
+#include "opal/mca/timer/base/base.h"
 
 #include "common_cuda.h"
 
@@ -126,7 +127,7 @@ static opal_mutex_t common_cuda_dtoh_lock;
 static opal_mutex_t common_cuda_ipc_lock;
 
 /* Functions called by opal layer - plugged into opal function table */
-static int mca_common_cuda_is_gpu_buffer(const void*);
+static int mca_common_cuda_is_gpu_buffer(const void*, opal_convertor_t*);
 static int mca_common_cuda_memmove(void*, void*, size_t);
 static int mca_common_cuda_cu_memcpy_async(void*, const void*, size_t, opal_convertor_t*);
 static int mca_common_cuda_cu_memcpy(void*, const void*, size_t);
@@ -190,12 +191,12 @@ opal_lt_dlhandle libcuda_handle = NULL;
 #if OPAL_ENABLE_DEBUG
 /* Some timing support structures.  Enable this to help analyze
  * internal performance issues. */
-static struct timespec ts_start;
-static struct timespec ts_end;
+static opal_timer_t ts_start;
+static opal_timer_t ts_end;
 static double accum;
 #define THOUSAND  1000L
 #define MILLION   1000000L
-static float mydifftime(struct timespec ts_start, struct timespec ts_end);
+static float mydifftime(opal_timer_t ts_start, opal_timer_t ts_end);
 #endif /* OPAL_ENABLE_DEBUG */
 
 /* These functions are typically unused in the optimized builds. */
@@ -229,7 +230,7 @@ int mca_common_cuda_stage_one_init(void)
     opal_lt_dladvise advise;
     int retval, i, j;
     int advise_support = 1;
-    char *cudalibs[] = {"libcuda.so.1", NULL};
+    char *cudalibs[] = {"libcuda.so.1", "libcuda.dylib", NULL};
     char *searchpaths[] = {"", "/usr/lib64", NULL};
     char **errmsgs = NULL;
     char *errmsg = NULL;
@@ -1026,7 +1027,9 @@ int cuda_getmemhandle(void *base, size_t size, mca_mpool_base_registration_t *ne
     /* Store all the information in the registration */
     cuda_reg->base.base = (void *)pbase;
     cuda_reg->base.bound = (unsigned char *)pbase + psize - 1;
-    memcpy(&cuda_reg->memHandle, &memHandle, sizeof(memHandle));
+    memcpy(&cuda_reg->data.memHandle, &memHandle, sizeof(memHandle));
+    cuda_reg->data.memh_seg_addr.pval = (void *) pbase;
+    cuda_reg->data.memh_seg_len = psize;
 
 #if OPAL_CUDA_SYNC_MEMOPS
     /* With CUDA 6.0, we can set an attribute on the memory pointer that will
@@ -1050,7 +1053,7 @@ int cuda_getmemhandle(void *base, size_t size, mca_mpool_base_registration_t *ne
      * Note that this needs to be the NULL stream to make since it is
      * unknown what stream any copies into the device memory were done
      * with. */
-    result = cuFunc.cuEventRecord((CUevent)cuda_reg->event, 0);
+    result = cuFunc.cuEventRecord((CUevent)cuda_reg->data.event, 0);
     if (OPAL_UNLIKELY(CUDA_SUCCESS != result)) {
         opal_show_help("help-mpi-common-cuda.txt", "cuEventRecord failed",
                        true, result, base);
@@ -1067,7 +1070,7 @@ int cuda_getmemhandle(void *base, size_t size, mca_mpool_base_registration_t *ne
  */
 int cuda_ungetmemhandle(void *reg_data, mca_mpool_base_registration_t *reg) 
 {
-    CUDA_DUMP_EVTHANDLE((100, ((mca_mpool_common_cuda_reg_t *)reg)->evtHandle, "cuda_ungetmemhandle"));
+    CUDA_DUMP_EVTHANDLE((100, ((mca_mpool_common_cuda_reg_t *)reg)->data.evtHandle, "cuda_ungetmemhandle"));
     opal_output_verbose(10, mca_common_cuda_output,
                         "CUDA: cuda_ungetmemhandle (no-op): base=%p", reg->base);
 
@@ -1088,7 +1091,7 @@ int cuda_openmemhandle(void *base, size_t size, mca_mpool_base_registration_t *n
     mca_mpool_common_cuda_reg_t *cuda_newreg = (mca_mpool_common_cuda_reg_t*)newreg;
 
     /* Need to copy into memory handle for call into CUDA library. */
-    memcpy(&memHandle, cuda_newreg->memHandle, sizeof(memHandle));
+    memcpy(&memHandle, cuda_newreg->data.memHandle, sizeof(memHandle));
     CUDA_DUMP_MEMHANDLE((100, &memHandle, "Before call to cuIpcOpenMemHandle"));
 
     /* Open the memory handle and store it into the registration structure. */
@@ -1106,7 +1109,7 @@ int cuda_openmemhandle(void *base, size_t size, mca_mpool_base_registration_t *n
     }
     if (OPAL_UNLIKELY(CUDA_SUCCESS != result)) {
         opal_show_help("help-mpi-common-cuda.txt", "cuIpcOpenMemHandle failed",
-                       true, result, base);
+                       true, OPAL_PROC_MY_HOSTNAME, result, base);
         /* Currently, this is a non-recoverable error */
         return OPAL_ERROR;
     } else {
@@ -1136,7 +1139,7 @@ int cuda_closememhandle(void *reg_data, mca_mpool_base_registration_t *reg)
         opal_output_verbose(10, mca_common_cuda_output,
                             "CUDA: cuIpcCloseMemHandle passed: base=%p",
                             cuda_reg->base.alloc_base);
-        CUDA_DUMP_MEMHANDLE((100, cuda_reg->memHandle, "cuIpcCloseMemHandle"));
+        CUDA_DUMP_MEMHANDLE((100, cuda_reg->data.memHandle, "cuIpcCloseMemHandle"));
     }
 
     return OPAL_SUCCESS;
@@ -1188,7 +1191,7 @@ void mca_common_wait_stream_synchronize(mca_mpool_common_cuda_reg_t *rget_reg)
     CUevent event;
     CUresult result;
 
-    memcpy(&evtHandle, rget_reg->evtHandle, sizeof(evtHandle));
+    memcpy(&evtHandle, rget_reg->data.evtHandle, sizeof(evtHandle));
     CUDA_DUMP_EVTHANDLE((100, &evtHandle, "stream_synchronize"));
 
     result = cuFunc.cuIpcOpenEventHandle(&event, evtHandle);
@@ -1612,7 +1615,7 @@ int mca_common_cuda_memhandle_matches(mca_mpool_common_cuda_reg_t *new_reg,
                                       mca_mpool_common_cuda_reg_t *old_reg)
 {
 
-    if (0 == memcmp(new_reg->memHandle, old_reg->memHandle, sizeof(new_reg->memHandle))) {
+    if (0 == memcmp(new_reg->data.memHandle, old_reg->data.memHandle, sizeof(new_reg->data.memHandle))) {
         return 1;
     } else {
         return 0;
@@ -1691,34 +1694,15 @@ static void cuda_dump_evthandle(int verbose, void *evtHandle, char *str) {
  *
  */
 #if OPAL_ENABLE_DEBUG
-static float mydifftime(struct timespec ts_start, struct timespec ts_end) {
-    float seconds;
-    float microseconds;
-    float nanoseconds;
-
-    /* If we did not rollover the seconds clock, then we just take
-     * the difference between the nanoseconds clock for actual time */
-    if (0 == (ts_end.tv_sec - ts_start.tv_sec)) {
-        nanoseconds = (float)(ts_end.tv_nsec - ts_start.tv_nsec);
-        return nanoseconds / THOUSAND;
-    } else {
-        seconds = (float)(ts_end.tv_sec - ts_start.tv_sec); 
-
-        /* Note that this value can be negative or positive
-         * which is fine.  In the case that it is negative, it
-         * just gets subtracted from the difference which is what
-         * we want. */
-        nanoseconds = (float)(ts_end.tv_nsec - ts_start.tv_nsec);
-        microseconds = (seconds * MILLION) + (nanoseconds/THOUSAND);
-        return microseconds;
-    }
+static float mydifftime(opal_timer_t ts_start, opal_timer_t ts_end) {
+    return (ts_end - ts_start);
 }
 #endif /* OPAL_ENABLE_DEBUG */
 
 #endif /* OPAL_CUDA_SUPPORT_41 */
 
 /* Routines that get plugged into the opal datatype code */
-static int mca_common_cuda_is_gpu_buffer(const void *pUserBuf)
+static int mca_common_cuda_is_gpu_buffer(const void *pUserBuf, opal_convertor_t *convertor)
 {
     int res;
     CUmemorytype memType = 0;
@@ -1733,6 +1717,15 @@ static int mca_common_cuda_is_gpu_buffer(const void *pUserBuf)
     void *attrdata[] = {(void *)&memType, (void *)&ctx, (void *)&isManaged};
 
     res = cuFunc.cuPointerGetAttributes(3, attributes, attrdata, dbuf);
+
+    /* Mark unified memory buffers with a flag.  This will allow all unified
+     * memory to be forced through host buffers.  Note that this memory can
+     * be either host or device so we need to set this flag prior to that check. */
+    if (1 == isManaged) {
+        if (NULL != convertor) {
+            convertor->flags |= CONVERTOR_CUDA_UNIFIED;
+        }
+    }
     if (res != CUDA_SUCCESS) {
         /* If we cannot determine it is device pointer,
          * just assume it is not. */
@@ -1797,15 +1790,6 @@ static int mca_common_cuda_is_gpu_buffer(const void *pUserBuf)
         }
     }
 
-#if OPAL_CUDA_GET_ATTRIBUTES
-    if (1 == isManaged) {
-        /* Currently cannot support managed memory */
-        opal_output(0, "CUDA: ptr=%p: CUDA-aware Open MPI detected managed memory but there "
-                    "is no support for it.  Result will be unpredictable.", pUserBuf);
-        return OPAL_ERROR;
-    }
-#endif /* OPAL_CUDA_GET_ATTRIBUTES */
-
     /* First access on a device pointer finalizes CUDA support initialization.
      * If initialization fails, disable support. */
     if (!stage_three_init_complete) {
@@ -1839,7 +1823,7 @@ static int mca_common_cuda_cu_memcpy(void *dest, const void *src, size_t size)
                                               CU_POINTER_ATTRIBUTE_MEMORY_TYPE, (CUdeviceptr)dest);
         result = cuFunc.cuPointerGetAttribute(&memTypeSrc,
                                               CU_POINTER_ATTRIBUTE_MEMORY_TYPE, (CUdeviceptr)src);
-        clock_gettime(CLOCK_MONOTONIC, &ts_start);
+        ts_start = opal_timer_base_get_usec();
     }
 #endif
     if (mca_common_cuda_cumemcpy_async) {
@@ -1865,7 +1849,7 @@ static int mca_common_cuda_cu_memcpy(void *dest, const void *src, size_t size)
     }
 #if OPAL_ENABLE_DEBUG
     if (OPAL_UNLIKELY(mca_common_cuda_cumemcpy_timing)) {
-        clock_gettime(CLOCK_MONOTONIC, &ts_end);
+        ts_end = opal_timer_base_get_usec();
         accum = mydifftime(ts_start, ts_end);
         if (mca_common_cuda_cumemcpy_async) {
             opal_output(0, "cuMemcpyAsync took   %7.2f usecs (src=%p (%d), dst=%p (%d))\n",

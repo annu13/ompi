@@ -11,7 +11,9 @@ dnl                         University of Stuttgart.  All rights reserved.
 dnl Copyright (c) 2004-2005 The Regents of the University of California.
 dnl                         All rights reserved.
 dnl Copyright (c) 2006-2010 Oracle and/or its affiliates.  All rights reserved.
-dnl Copyright (c) 2009-2013 Cisco Systems, Inc.  All rights reserved.
+dnl Copyright (c) 2009-2015 Cisco Systems, Inc.  All rights reserved.
+dnl Copyright (c) 2015      Research Organization for Information Science
+dnl                         and Technology (RIST). All rights reserved.
 dnl $COPYRIGHT$
 dnl 
 dnl Additional copyrights may follow
@@ -75,50 +77,50 @@ AC_DEFUN([OPAL_SETUP_WRAPPER_INIT],[
     AC_ARG_WITH([wrapper-cflags], 
                 [AC_HELP_STRING([--with-wrapper-cflags],
                                 [Extra flags to add to CFLAGS when using mpicc])])
-    AS_IF([test "$with_wrapper_cflags" = "yes" -o "$with_wrapper_cflags" = "no"],
+    AS_IF([test "$with_wrapper_cflags" = "yes" || test "$with_wrapper_cflags" = "no"],
           [AC_MSG_ERROR([--with-wrapper-cflags must have an argument.])])
 
     AC_ARG_WITH([wrapper-cflags-prefix], 
                 [AC_HELP_STRING([--with-wrapper-cflags-prefix],
                                 [Extra flags (before user flags) to add to CFLAGS when using mpicc])])
-    AS_IF([test "$with_wrapper_cflags_prefix" = "yes" -o "$with_wrapper_cflags_prefix" = "no"],
+    AS_IF([test "$with_wrapper_cflags_prefix" = "yes" || test "$with_wrapper_cflags_prefix" = "no"],
           [AC_MSG_ERROR([--with-wrapper-cflags-prefix must have an argument.])])
 
     AC_ARG_WITH([wrapper-cxxflags], 
         [AC_HELP_STRING([--with-wrapper-cxxflags],
                         [Extra flags to add to CXXFLAGS when using mpiCC/mpic++])])
-    AS_IF([test "$with_wrapper_cxxflags" = "yes" -o "$with_wrapper_cxxflags" = "no"],
+    AS_IF([test "$with_wrapper_cxxflags" = "yes" || test "$with_wrapper_cxxflags" = "no"],
           [AC_MSG_ERROR([--with-wrapper-cxxflags must have an argument.])])
 
     AC_ARG_WITH([wrapper-cxxflags-prefix], 
         [AC_HELP_STRING([--with-wrapper-cxxflags-prefix],
                         [Extra flags to add to CXXFLAGS when using mpiCC/mpic++])])
-    AS_IF([test "$with_wrapper_cxxflags_prefix" = "yes" -o "$with_wrapper_cxxflags_prefix" = "no"],
+    AS_IF([test "$with_wrapper_cxxflags_prefix" = "yes" || test "$with_wrapper_cxxflags_prefix" = "no"],
           [AC_MSG_ERROR([--with-wrapper-cxxflags-prefix must have an argument.])])
 
     m4_ifdef([project_ompi], [
             AC_ARG_WITH([wrapper-fcflags], 
                 [AC_HELP_STRING([--with-wrapper-fcflags],
                         [Extra flags to add to FCFLAGS when using mpifort])])
-            AS_IF([test "$with_wrapper_fcflags" = "yes" -o "$with_wrapper_fcflags" = "no"],
+            AS_IF([test "$with_wrapper_fcflags" = "yes" || test "$with_wrapper_fcflags" = "no"],
                 [AC_MSG_ERROR([--with-wrapper-fcflags must have an argument.])])
 
             AC_ARG_WITH([wrapper-fcflags-prefix], 
                 [AC_HELP_STRING([--with-wrapper-fcflags-prefix],
                         [Extra flags (before user flags) to add to FCFLAGS when using mpifort])])
-            AS_IF([test "$with_wrapper_fcflags_prefix" = "yes" -o "$with_wrapper_fcflags_prefix" = "no"],
+            AS_IF([test "$with_wrapper_fcflags_prefix" = "yes" || test "$with_wrapper_fcflags_prefix" = "no"],
                 [AC_MSG_ERROR([--with-wrapper-fcflags-prefix must have an argument.])])])
 
     AC_ARG_WITH([wrapper-ldflags], 
                 [AC_HELP_STRING([--with-wrapper-ldflags],
                                 [Extra flags to add to LDFLAGS when using wrapper compilers])])
-    AS_IF([test "$with_wrapper_ldflags" = "yes" -o "$with_wrapper_ldflags" = "no"],
+    AS_IF([test "$with_wrapper_ldflags" = "yes" || test "$with_wrapper_ldflags" = "no"],
           [AC_MSG_ERROR([--with-wrapper-ldflags must have an argument.])])
 
     AC_ARG_WITH([wrapper-libs], 
                 [AC_HELP_STRING([--with-wrapper-libs],
                                 [Extra flags to add to LIBS when using wrapper compilers])])
-    AS_IF([test "$with_wrapper_libs" = "yes" -o "$with_wrapper_libs" = "no"],
+    AS_IF([test "$with_wrapper_libs" = "yes" || test "$with_wrapper_libs" = "no"],
           [AC_MSG_ERROR([--with-wrapper-libs must have an argument.])])
 
     AC_MSG_CHECKING([if want wrapper compiler rpath support])
@@ -242,9 +244,15 @@ AC_DEFUN([OPAL_SETUP_WRAPPER_FINAL],[
     WRAPPER_RPATH_SUPPORT=disabled
     AS_IF([test "$enable_wrapper_rpath" = "yes"],
           [OPAL_SETUP_RPATH])
-    AS_IF([test "$enable_wrapper_rpath" = "yes" -a "$WRAPPER_RPATH_SUPPORT" = "disabled"],
+    AS_IF([test "$enable_wrapper_rpath" = "yes" && test "$WRAPPER_RPATH_SUPPORT" = "disabled"],
           [AC_MSG_WARN([RPATH support requested but not available])
            AC_MSG_ERROR([Cannot continue])])
+
+    # Note that we have to setup <package>_PKG_CONFIG_LDFLAGS for the
+    # pkg-config files to parallel the
+    # <package>_WRAPPER_EXTRA_LDFLAGS.  This is because pkg-config
+    # will not understand the @{libdir} notation in
+    # *_WRAPPER_EXTRA_LDFLAGS; we have to translate it to ${libdir}.
 
     # We now have all relevant flags.  Substitute them in everywhere.
     m4_ifdef([project_opal], [
@@ -281,6 +289,12 @@ AC_DEFUN([OPAL_SETUP_WRAPPER_FINAL],[
        RPATHIFY_LDFLAGS([OPAL_WRAPPER_EXTRA_LDFLAGS])
        AC_SUBST([OPAL_WRAPPER_EXTRA_LDFLAGS])
        AC_MSG_RESULT([$OPAL_WRAPPER_EXTRA_LDFLAGS])
+
+       # Convert @{libdir} to ${libdir} for pkg-config
+       AC_MSG_CHECKING([for OPAL pkg-config LDFLAGS])
+       OPAL_PKG_CONFIG_LDFLAGS=`echo "$OPAL_WRAPPER_EXTRA_LDFLAGS" | sed -e 's/@{libdir}/\${libdir}/g'`
+       AC_SUBST([OPAL_PKG_CONFIG_LDFLAGS])
+       AC_MSG_RESULT([$OPAL_PKG_CONFIG_LDFLAGS])
 
        # wrapper_extra_libs doesn't really get populated until after the mca system runs
        # since most of the libs come from libtool.  So this is the first time we can
@@ -319,6 +333,12 @@ AC_DEFUN([OPAL_SETUP_WRAPPER_FINAL],[
        RPATHIFY_LDFLAGS([ORTE_WRAPPER_EXTRA_LDFLAGS])
        AC_SUBST([ORTE_WRAPPER_EXTRA_LDFLAGS])
        AC_MSG_RESULT([$ORTE_WRAPPER_EXTRA_LDFLAGS])
+
+       # Convert @{libdir} to ${libdir} for pkg-config
+       AC_MSG_CHECKING([for ORTE pkg-config LDFLAGS])
+       ORTE_PKG_CONFIG_LDFLAGS=`echo "$ORTE_WRAPPER_EXTRA_LDFLAGS" | sed -e 's/@{libdir}/\${libdir}/g'`
+       AC_SUBST([ORTE_PKG_CONFIG_LDFLAGS])
+       AC_MSG_RESULT([$ORTE_PKG_CONFIG_LDFLAGS])
 
        AC_MSG_CHECKING([for ORTE LIBS])
        ORTE_WRAPPER_EXTRA_LIBS="$orte_mca_wrapper_extra_libs"
@@ -387,6 +407,12 @@ AC_DEFUN([OPAL_SETUP_WRAPPER_FINAL],[
        RPATHIFY_LDFLAGS([OMPI_WRAPPER_EXTRA_LDFLAGS])
        AC_SUBST([OMPI_WRAPPER_EXTRA_LDFLAGS])
        AC_MSG_RESULT([$OMPI_WRAPPER_EXTRA_LDFLAGS])
+
+       # Convert @{libdir} to ${libdir} for pkg-config
+       AC_MSG_CHECKING([for OMPI pkg-config LDFLAGS])
+       OMPI_PKG_CONFIG_LDFLAGS=`echo "$OMPI_WRAPPER_EXTRA_LDFLAGS" | sed -e 's/@{libdir}/\${libdir}/g'`
+       AC_SUBST([OMPI_PKG_CONFIG_LDFLAGS])
+       AC_MSG_RESULT([$OMPI_PKG_CONFIG_LDFLAGS])
 
        AC_MSG_CHECKING([for OMPI LIBS])
        OMPI_WRAPPER_EXTRA_LIBS="$ompi_mca_wrapper_extra_libs"
