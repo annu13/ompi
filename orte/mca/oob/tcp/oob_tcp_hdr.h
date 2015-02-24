@@ -5,17 +5,17 @@
  * Copyright (c) 2004-2006 The University of Tennessee and The University
  *                         of Tennessee Research Foundation.  All rights
  *                         reserved.
- * Copyright (c) 2004-2005 High Performance Computing Center Stuttgart, 
+ * Copyright (c) 2004-2005 High Performance Computing Center Stuttgart,
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
- * Copyright (c) 2006-2013 Los Alamos National Security, LLC. 
+ * Copyright (c) 2006-2013 Los Alamos National Security, LLC.
  *                         All rights reserved.
  * Copyright (c) 2010-2011 Cisco Systems, Inc.  All rights reserved.
  * $COPYRIGHT$
- * 
+ * Copyright (c) 2014 -2015 Intel, Inc. All rights reserved.
  * Additional copyrights may follow
- * 
+ *
  * $HEADER$
  */
 
@@ -54,6 +54,8 @@ typedef struct {
     mca_oob_tcp_msg_type_t type;
     /* the rml tag where this message is headed */
     orte_rml_tag_t tag;
+    /* the rml channel where this message is headed */
+    orte_rml_channel_num_t channel;
     /* number of bytes in message */
     uint32_t nbytes;
 } mca_oob_tcp_hdr_t;

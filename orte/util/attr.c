@@ -3,9 +3,9 @@
  * Copyright (c) 2014      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
  * $COPYRIGHT$
- * 
+ *
  * Additional copyrights may follow
- * 
+ *
  * $HEADER$
  */
 
@@ -55,6 +55,7 @@ bool orte_get_attribute(opal_list_t *attributes,
             if (NULL != data) {
                 if (ORTE_SUCCESS != (rc = orte_attr_unload(kv, data, type))) {
                     ORTE_ERROR_LOG(rc);
+                    return false;
                 }
             }
             return true;
@@ -132,7 +133,7 @@ int orte_attr_register(const char *project,
 const char *orte_attr_key_to_str(orte_attribute_key_t key)
 {
     int i;
-    
+
     if (ORTE_ATTR_KEY_BASE < key &&
         key < ORTE_ATTR_KEY_MAX) {
         /* belongs to ORTE, so we handle it */
@@ -249,13 +250,7 @@ const char *orte_attr_key_to_str(orte_attribute_key_t key)
             return "JOB-PHYSICAL-CPUIDS";
         case ORTE_JOB_LAUNCHED_DAEMONS:
             return "JOB-LAUNCHED-DAEMONS";
-        case ORTE_JOB_REPORT_BINDINGS:
-            return "JOB-REPORT-BINDINGS";
-        case ORTE_JOB_SLOT_LIST:
-            return "JOB-SLOT-LIST";
-        case ORTE_JOB_NOTIFICATIONS:
-            return "JOB-NOTIFICATIONS";
-            
+
         case ORTE_PROC_NOBARRIER:
             return "PROC-NOBARRIER";
         case ORTE_PROC_CPU_BITMAP:
@@ -285,6 +280,7 @@ const char *orte_attr_key_to_str(orte_attribute_key_t key)
         case ORTE_PROC_NBEATS:
             return "PROC-NBEATS";
 
+
         default:
             return "UNKNOWN-KEY";
         }
@@ -293,7 +289,7 @@ const char *orte_attr_key_to_str(orte_attribute_key_t key)
     /* see if one of the converters can handle it */
     for (i = 0 ; i < MAX_CONVERTERS ; ++i) {
         if (0 != converters[i].init) {
-            if (converters[i].key_base < key && 
+            if (converters[i].key_base < key &&
                 key < converters[i].key_max) {
                 return converters[i].converter(key);
             }
@@ -426,9 +422,8 @@ static int orte_attr_unload(orte_attribute_t *kv,
     if (type != kv->type) {
         return OPAL_ERR_TYPE_MISMATCH;
     }
-    if (NULL == data  ||
-        (NULL == *data && OPAL_STRING != type && OPAL_BYTE_OBJECT != type &&
-         OPAL_BUFFER != type && OPAL_PTR != type)) {
+    if (NULL == data || (NULL == *data && OPAL_STRING != type && OPAL_BYTE_OBJECT != type &&
+                               OPAL_BUFFER != type && OPAL_PTR != type)) {
         assert(0);
         OPAL_ERROR_LOG(OPAL_ERR_BAD_PARAM);
         return OPAL_ERR_BAD_PARAM;

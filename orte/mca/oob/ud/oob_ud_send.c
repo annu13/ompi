@@ -31,7 +31,7 @@ static int mca_oob_ud_send_self (orte_rml_send_t *msg)
                          "%s mca_oob_ud_send_self: sending %d bytes to myself",
                          ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), size);
 
-    rc = mca_oob_ud_get_recv_req (*ORTE_PROC_MY_NAME, msg->tag, &req, (msg->iov != NULL) ? true : false);
+    rc = mca_oob_ud_get_recv_req (*ORTE_PROC_MY_NAME, msg->tag, msg->dst.channel, &req, (msg->iov != NULL) ? true : false);
     if (ORTE_SUCCESS != rc) {
         return rc;
     }
@@ -165,7 +165,7 @@ int mca_oob_ud_process_send_nb(int fd, short args, void *cbdata)
     send_req->req_target = op->msg->dst;
     send_req->req_origin = op->msg->origin;
     send_req->req_tag    = op->msg->tag;
-
+    send_req->req_channel = op->msg->dst_channel;
     if (op->msg->data != NULL) {
         size = op->msg->count;
 
@@ -237,26 +237,28 @@ int mca_oob_ud_process_send_nb(int fd, short args, void *cbdata)
     req_msg->hdr->msg_data.req.data_len = size;
     req_msg->hdr->msg_data.req.mtu      = port->mtu;
     req_msg->hdr->msg_data.req.tag      = op->msg->tag;
-
+    req_msg->hdr->msg_data.req.channel   = op->msg->dst_channel;
     if (MCA_OOB_UD_REQ_IOV == send_req->req_data_type) {
         opal_output_verbose(10, orte_oob_base_framework.framework_output,
                              "%s-%s send_nb: tag %d size %lu. msg: %p. peer = %p. req = %p."
-                             "count = %d. uiov = %p.\n",
+                             "count = %d. uiov = %p, channel = %d\n",
                              ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
                              ORTE_NAME_PRINT(&op->msg->dst),
                              op->msg->tag, (unsigned long)size,
                              (void *) req_msg,
                              (void *) peer, (void *) send_req,
-                              send_req->req_data.iov.count, (void *) send_req->req_data.iov.uiov);
+                              send_req->req_data.iov.count, (void *) send_req->req_data.iov.uiov,
+                             op->msg->dst_channel);
     } else {
         opal_output_verbose(10, orte_oob_base_framework.framework_output,
                              "%s-%s send_nb: tag %d size %lu. msg: %p. peer = %p. req = %p."
-                             "buffer = %p.\n",
+                             "buffer = %p, channel = %d.\n",
                              ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
                              ORTE_NAME_PRINT(&op->msg->dst),
                              op->msg->tag, (unsigned long)size,
                              (void *) req_msg,
-                             (void *) peer, (void *) send_req, (void *) send_req->req_data.buf.p);
+                             (void *) peer, (void *) send_req, (void *) send_req->req_data.buf.p,
+                            op->msg->dst_channel);
     }
 
     if (!send_eager) {

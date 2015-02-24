@@ -9,11 +9,11 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
- * Copyright (c) 2006-2013 Los Alamos National Security, LLC. 
+ * Copyright (c) 2006-2013 Los Alamos National Security, LLC.
  *                         All rights reserved.
  * Copyright (c) 2009-2013 Cisco Systems, Inc.  All rights reserved.
  * Copyright (c) 2011      Oak Ridge National Labs.  All rights reserved.
- * Copyright (c) 2013-2014 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2013-2015 Intel, Inc.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -23,7 +23,7 @@
  * In windows, many of the socket functions return an EWOULDBLOCK
  * instead of things like EAGAIN, EINPROGRESS, etc. It has been
  * verified that this will not conflict with other error codes that
- * are returned by these functions under UNIX/Linux environments 
+ * are returned by these functions under UNIX/Linux environments
  */
 
 #include "orte_config.h"
@@ -253,9 +253,9 @@ static int component_send(orte_rml_send_t *msg)
     orte_proc_t *proc;
 
     opal_output_verbose(5, orte_oob_base_framework.framework_output,
-                        "%s oob:usock:send_nb to peer %s:%d",
+                        "%s oob:usock:send_nb to peer %s:%d to channel=%d",
                         ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
-                        ORTE_NAME_PRINT(&msg->dst), msg->tag);
+                        ORTE_NAME_PRINT(&msg->dst), msg->tag, msg->dst_channel);
 
     if (ORTE_PROC_IS_DAEMON || ORTE_PROC_IS_HNP) {
         /* daemons can only reach local procs */
@@ -302,13 +302,13 @@ static int component_set_addr(orte_process_name_t *peer,
      */
     if (ORTE_PROC_IS_APP) {
         /* if this is my daemon, then take it - otherwise, ignore */
-        if (ORTE_PROC_MY_DAEMON->jobid == peer->jobid &&
-            ORTE_PROC_MY_DAEMON->vpid == peer->vpid) {
-            ui64 = (uint64_t*)peer;
-            if (OPAL_SUCCESS != opal_hash_table_get_value_uint64(&mca_oob_usock_module.peers,
-                                                                 (*ui64), (void**)&pr) || NULL == pr) {
-                pr = OBJ_NEW(mca_oob_usock_peer_t);
-                pr->name = *peer;
+         if (ORTE_PROC_MY_DAEMON->jobid == peer->jobid &&
+             ORTE_PROC_MY_DAEMON->vpid == peer->vpid) {
+             ui64 = (uint64_t*)peer;
+             if (OPAL_SUCCESS != opal_hash_table_get_value_uint64(&mca_oob_usock_module.peers,
+                                                                   (*ui64), (void**)&pr) || NULL == pr) {
+                 pr = OBJ_NEW(mca_oob_usock_peer_t);
+                 pr->name = *peer;
                 opal_hash_table_set_value_uint64(&mca_oob_usock_module.peers, (*ui64), pr);
             }
             /* we have to initiate the connection because otherwise the

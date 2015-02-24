@@ -80,7 +80,7 @@ int mca_oob_ud_get_recv_req (const orte_process_name_t name, const int tag,
 
     req->req_origin       = name;
     req->req_tag          = tag;
-
+    req->req_channel      = ORTE_RML_INVALID_CHANNEL_NUM;
     /* this receive was not expected */
     req->type             = MCA_OOB_UD_REQ_RECV;
 

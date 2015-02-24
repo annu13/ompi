@@ -151,6 +151,7 @@ struct mca_oob_ud_req_t {
     }req_data;
 
     int                     req_tag;
+    int                     req_channel;
     int                     req_rc;
 
     void                    *req_cbdata;

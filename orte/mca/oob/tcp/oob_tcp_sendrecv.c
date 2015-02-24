@@ -5,25 +5,25 @@
  * Copyright (c) 2004-2011 The University of Tennessee and The University
  *                         of Tennessee Research Foundation.  All rights
  *                         reserved.
- * Copyright (c) 2004-2005 High Performance Computing Center Stuttgart, 
+ * Copyright (c) 2004-2005 High Performance Computing Center Stuttgart,
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
- * Copyright (c) 2006-2013 Los Alamos National Security, LLC. 
+ * Copyright (c) 2006-2013 Los Alamos National Security, LLC.
  *                         All rights reserved.
  * Copyright (c) 2009      Cisco Systems, Inc.  All rights reserved.
  * Copyright (c) 2011      Oak Ridge National Labs.  All rights reserved.
  * Copyright (c) 2013-2014 Intel, Inc.  All rights reserved.
  * $COPYRIGHT$
- * 
+ *
  * Additional copyrights may follow
- * 
+ *
  * $HEADER$
  *
  * In windows, many of the socket functions return an EWOULDBLOCK
  * instead of \ things like EAGAIN, EINPROGRESS, etc. It has been
  * verified that this will \ not conflict with other error codes that
- * are returned by these functions \ under UNIX/Linux environments 
+ * are returned by these functions \ under UNIX/Linux environments
  */
 
 #include "orte_config.h"
@@ -102,9 +102,9 @@ static int send_bytes(mca_oob_tcp_peer_t* peer)
                 return ORTE_ERR_WOULD_BLOCK;
             }
             /* we hit an error and cannot progress this message */
-            opal_output(0, "%s->%s mca_oob_tcp_msg_send_bytes: write failed: %s (%d) [sd = %d]", 
-                        ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), 
-                        ORTE_NAME_PRINT(&(peer->name)), 
+            opal_output(0, "%s->%s mca_oob_tcp_msg_send_bytes: write failed: %s (%d) [sd = %d]",
+                        ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
+                        ORTE_NAME_PRINT(&(peer->name)),
                         strerror(opal_socket_errno),
                         opal_socket_errno,
                         peer->sd);
@@ -293,7 +293,7 @@ void mca_oob_tcp_send_handler(int sd, short flags, void *cbdata)
             peer->send_msg = (mca_oob_tcp_send_t*)
                 opal_list_remove_first(&peer->send_queue);
         }
-        
+
         /* if nothing else to do unregister for send event notifications */
         if (NULL == peer->send_msg && peer->send_ev_active) {
             opal_event_del(&peer->send_event);
@@ -344,7 +344,7 @@ static int read_bytes(mca_oob_tcp_peer_t* peer)
              * to abort this message
              */
             opal_output_verbose(OOB_TCP_DEBUG_FAIL, orte_oob_base_framework.framework_output,
-                                "%s-%s mca_oob_tcp_msg_recv: readv failed: %s (%d)", 
+                                "%s-%s mca_oob_tcp_msg_recv: readv failed: %s (%d)",
                                 ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
                                 ORTE_NAME_PRINT(&(peer->name)),
                                 strerror(opal_socket_errno),
@@ -359,7 +359,7 @@ static int read_bytes(mca_oob_tcp_peer_t* peer)
              * and let the caller know
              */
             opal_output_verbose(OOB_TCP_DEBUG_FAIL, orte_oob_base_framework.framework_output,
-                                "%s-%s mca_oob_tcp_msg_recv: peer closed connection", 
+                                "%s-%s mca_oob_tcp_msg_recv: peer closed connection",
                                 ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
                                 ORTE_NAME_PRINT(&(peer->name)));
             /* stop all events */
@@ -557,6 +557,7 @@ void mca_oob_tcp_recv_handler(int sd, short flags, void *cbdata)
                                         "%s DELIVERING TO RML",
                                         ORTE_NAME_PRINT(ORTE_PROC_MY_NAME));
                     ORTE_RML_POST_MESSAGE(&peer->recv_msg->hdr.origin, peer->recv_msg->hdr.tag,
+                                          peer->recv_msg->hdr.channel,
                                           peer->recv_msg->data,
                                           peer->recv_msg->hdr.nbytes);
                     OBJ_RELEASE(peer->recv_msg);
@@ -571,6 +572,7 @@ void mca_oob_tcp_recv_handler(int sd, short flags, void *cbdata)
                     snd->dst = peer->recv_msg->hdr.dst;
                     snd->origin = peer->recv_msg->hdr.origin;
                     snd->tag = peer->recv_msg->hdr.tag;
+                    snd->dst_channel = peer->recv_msg->hdr.channel;
                     snd->data = peer->recv_msg->data;
                     snd->count = peer->recv_msg->hdr.nbytes;
                     snd->cbfunc.iov = NULL;
@@ -600,8 +602,8 @@ void mca_oob_tcp_recv_handler(int sd, short flags, void *cbdata)
             }
         }
         break;
-    default: 
-        opal_output(0, "%s-%s mca_oob_tcp_peer_recv_handler: invalid socket state(%d)", 
+    default:
+        opal_output(0, "%s-%s mca_oob_tcp_peer_recv_handler: invalid socket state(%d)",
                     ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
                     ORTE_NAME_PRINT(&(peer->name)),
                     peer->state);
