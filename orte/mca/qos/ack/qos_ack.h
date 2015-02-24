@@ -10,14 +10,14 @@
 /**
  * @file
  *
- * QoS Framework maintenence interface
+ * QoS Ack Component interface
  *
  *
  *
  */
 
-#ifndef MCA_QOS_BASE_H
-#define MCA_QOS_BASE_H
+#ifndef MCA_QOS_ACK_H
+#define MCA_QOS_ACK_H
 
 #include "orte_config.h"
 #include "orte/mca/qos/qos.h"
@@ -26,9 +26,9 @@
 BEGIN_C_DECLS
 
 
-ORTE_MODULE_DECLSPEC extern orte_qos_component_t mca_qos_noop_component;
+ORTE_MODULE_DECLSPEC extern orte_qos_component_t mca_qos_ack_component;
 
-extern orte_qos_module_t  orte_qos_noop_module;
+extern orte_qos_module_t  orte_qos_ack_module;
 
 END_C_DECLS
 

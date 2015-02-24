@@ -10,7 +10,7 @@
 /**
  * @file
  *
- * QoS Framework No-op interface
+ * QoS No-op Component interface
  *
  *
  *
