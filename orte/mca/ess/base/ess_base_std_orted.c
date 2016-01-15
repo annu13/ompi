@@ -80,7 +80,7 @@
 #include "orte/orted/pmix/pmix_server.h"
 
 #include "orte/mca/ess/base/base.h"
-
+#include "orte/mca/rmaps/base/base.h"
 /* local globals */
 static bool plm_in_use=false;
 static bool signals_set=false;
@@ -370,6 +370,17 @@ int orte_ess_base_orted_setup(char **hosts)
         error = "orte_grpcomm_base_select";
         goto error;
     }
+    if (ORTE_SUCCESS != (ret = mca_base_framework_open(&orte_rmaps_base_framework, 0))) {
+        ORTE_ERROR_LOG(ret);
+        error = "orte_rmaps_base_open";
+        goto error;
+    }
+    if (ORTE_SUCCESS != (ret = orte_rmaps_base_select())) {
+        ORTE_ERROR_LOG(ret);
+        error = "orte_rmaps_base_find_available";
+        goto error;
+    }
+
     /* Open/select the odls */
     if (ORTE_SUCCESS != (ret = mca_base_framework_open(&orte_odls_base_framework, 0))) {
         ORTE_ERROR_LOG(ret);

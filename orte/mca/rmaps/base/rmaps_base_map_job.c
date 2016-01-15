@@ -105,6 +105,7 @@ void orte_rmaps_base_map_job(int fd, short args, void *cbdata)
                 }
             }
         }
+        jdata->num_procs = nprocs;
         opal_output_verbose(5, orte_rmaps_base_framework.framework_output,
                             "mca:rmaps: nprocs %s",
                             ORTE_VPID_PRINT(nprocs));
@@ -346,69 +347,6 @@ void orte_rmaps_base_map_job(int fd, short args, void *cbdata)
         }
     }
 
-    /* cycle thru the available mappers until one agrees to map
-     * the job
-     */
-    did_map = false;
-    if (1 == opal_list_get_size(&orte_rmaps_base.selected_modules)) {
-        /* forced selection */
-        mod = (orte_rmaps_base_selected_module_t*)opal_list_get_first(&orte_rmaps_base.selected_modules);
-        jdata->map->req_mapper = strdup(mod->component->mca_component_name);
-    }
-    OPAL_LIST_FOREACH(mod, &orte_rmaps_base.selected_modules, orte_rmaps_base_selected_module_t) {
-        if (ORTE_SUCCESS == (rc = mod->module->map_job(jdata)) ||
-            ORTE_ERR_RESOURCE_BUSY == rc) {
-            did_map = true;
-            break;
-        }
-        /* mappers return "next option" if they didn't attempt to
-         * map the job. anything else is a true error.
-         */
-        if (ORTE_ERR_TAKE_NEXT_OPTION != rc) {
-            ORTE_ERROR_LOG(rc);
-            ORTE_ACTIVATE_JOB_STATE(jdata, ORTE_JOB_STATE_MAP_FAILED);
-            OBJ_RELEASE(caddy);
-            return;
-        }
-    }
-    if (did_map && ORTE_ERR_RESOURCE_BUSY == rc) {
-        /* the map was done but nothing could be mapped
-         * for launch as all the resources were busy
-         */
-        orte_show_help("help-orte-rmaps-base.txt", "cannot-launch", true);
-        ORTE_ACTIVATE_JOB_STATE(jdata, ORTE_JOB_STATE_CANNOT_LAUNCH);
-        OBJ_RELEASE(caddy);
-        return;
-    }
-
-    /* if we get here without doing the map, or with zero procs in
-     * the map, then that's an error
-     */
-    if (!did_map || 0 == jdata->num_procs || 0 == jdata->map->num_nodes) {
-        orte_show_help("help-orte-rmaps-base.txt", "failed-map", true,
-                       did_map ? "mapped" : "unmapped",
-                       jdata->num_procs, jdata->map->num_nodes);
-        ORTE_ACTIVATE_JOB_STATE(jdata, ORTE_JOB_STATE_MAP_FAILED);
-        OBJ_RELEASE(caddy);
-        return;
-    }
-
-    /* compute and save local ranks */
-    if (ORTE_SUCCESS != (rc = orte_rmaps_base_compute_local_ranks(jdata))) {
-        ORTE_ERROR_LOG(rc);
-        ORTE_ACTIVATE_JOB_STATE(jdata, ORTE_JOB_STATE_MAP_FAILED);
-        OBJ_RELEASE(caddy);
-        return;
-    }
-
-    /* compute and save bindings */
-    if (ORTE_SUCCESS != (rc = orte_rmaps_base_compute_bindings(jdata))) {
-        ORTE_ERROR_LOG(rc);
-        ORTE_ACTIVATE_JOB_STATE(jdata, ORTE_JOB_STATE_MAP_FAILED);
-        OBJ_RELEASE(caddy);
-        return;
-    }
-
     /* set the offset so shared memory components can potentially
      * connect to any spawned jobs
      */
@@ -423,6 +361,7 @@ void orte_rmaps_base_map_job(int fd, short args, void *cbdata)
         }
     }
 
+    jdata->map->display_map =1;
     /* if we wanted to display the map, now is the time to do it - ignore
      * daemon job
      */
@@ -523,4 +462,61 @@ void orte_rmaps_base_map_job(int fd, short args, void *cbdata)
 
     /* cleanup */
     OBJ_RELEASE(caddy);
+}
+
+int orte_rmaps_base_map_job_local (orte_job_t *jdata)
+{
+    orte_job_map_t *map;
+    int rc, i;
+    bool did_map;
+    orte_rmaps_base_selected_module_t *mod;
+    /* cycle thru the available mappers until one agrees to map
+     * the job
+     */
+    did_map = false;
+    if (1 == opal_list_get_size(&orte_rmaps_base.selected_modules)) {
+        /* forced selection */
+        mod = (orte_rmaps_base_selected_module_t*)opal_list_get_first(&orte_rmaps_base.selected_modules);
+        jdata->map->req_mapper = strdup(mod->component->mca_component_name);
+    }
+    OPAL_LIST_FOREACH(mod, &orte_rmaps_base.selected_modules, orte_rmaps_base_selected_module_t) {
+        if (ORTE_SUCCESS == (rc = mod->module->map_job(jdata)) ||
+            ORTE_ERR_RESOURCE_BUSY == rc) {
+            did_map = true;
+            break;
+        }
+        /* mappers return "next option" if they didn't attempt to
+         * map the job. anything else is a true error.
+         */
+        if (ORTE_ERR_TAKE_NEXT_OPTION != rc) {
+            ORTE_ERROR_LOG(rc);
+            return rc;
+        }
+    }
+    if (did_map && ORTE_ERR_RESOURCE_BUSY == rc) {
+        /* the map was done but nothing could be mapped
+         * for launch as all the resources were busy
+         */
+        ORTE_ERROR_LOG(rc);
+        return rc;
+    }
+
+   /* if we get here without doing the map, or with zero procs in
+    * the map, then that's an error
+    */
+    if (!did_map || 0 == jdata->num_procs || 0 == jdata->map->num_nodes) {
+        ORTE_ERROR_LOG(rc);
+        return rc;
+    }
+    /* compute and save local ranks */
+    if (ORTE_SUCCESS != (rc = orte_rmaps_base_compute_local_ranks(jdata))) {
+        ORTE_ERROR_LOG(rc);
+        return rc;
+    }
+    /* compute and save bindings */
+    if (ORTE_SUCCESS != (rc = orte_rmaps_base_compute_bindings(jdata))) {
+        ORTE_ERROR_LOG(rc);
+        return rc;
+    }
+    return rc;
 }

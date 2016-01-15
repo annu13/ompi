@@ -514,6 +514,8 @@ void orte_daemon_recv(int status, orte_process_name_t* sender,
 
         /****    SPAWN JOB COMMAND    ****/
     case ORTE_DAEMON_SPAWN_JOB_CMD:
+        opal_output(0, "%s orted_cmd: received spawn job",
+                    ORTE_NAME_PRINT(ORTE_PROC_MY_NAME));
         if (orte_debug_daemons_flag) {
             opal_output(0, "%s orted_cmd: received spawn job",
                         ORTE_NAME_PRINT(ORTE_PROC_MY_NAME));
@@ -530,6 +532,8 @@ void orte_daemon_recv(int status, orte_process_name_t* sender,
             }
             /* point the originator to the sender */
             jdata->originator = *sender;
+            opal_output(0, " orte_daemon_recv HNP Node job %s originator id is %s", ORTE_JOBID_PRINT(jdata->jobid),
+                        ORTE_JOBID_PRINT(jdata->originator.jobid));
             /* assign a jobid to it */
             if (ORTE_SUCCESS != (ret = orte_plm_base_create_jobid(jdata))) {
                 ORTE_ERROR_LOG(ret);

@@ -66,6 +66,7 @@
 #include "orte/mca/plm/base/base.h"
 #include "orte/mca/routed/base/base.h"
 #include "orte/mca/rmaps/rmaps_types.h"
+#include "orte/mca/rmaps/base/base.h"
 #include "orte/mca/schizo/schizo.h"
 #include "orte/mca/state/state.h"
 #include "orte/mca/filem/filem.h"
@@ -249,7 +250,7 @@ int orte_odls_base_default_construct_child_list(opal_buffer_t *data,
     orte_app_context_t *app;
     bool found;
     orte_node_t *node;
-
+    orte_job_t *hnp_jdata;
     OPAL_OUTPUT_VERBOSE((5, orte_odls_base_framework.framework_output,
                          "%s odls:constructing child list",
                          ORTE_NAME_PRINT(ORTE_PROC_MY_NAME)));
@@ -332,29 +333,46 @@ int orte_odls_base_default_construct_child_list(opal_buffer_t *data,
                          "%s odls:construct_child_list unpacking data to launch job %s",
                          ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), ORTE_JOBID_PRINT(*job)));
 
+    opal_output(0, "%s constructing the job map locally in orte_odls_default_construct_child_list for job %s",
+                    ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), ORTE_JOBID_PRINT(*job));
+    if(OPAL_SUCCESS != (rc = orte_rmaps_base_map_job_local(jdata))) {
+        opal_output(0, "%s constructing the job map locally failed for job %s error = %d",
+                    ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), ORTE_JOBID_PRINT(*job), rc);
+        ORTE_ERROR_LOG(ORTE_ERR_FAILED_TO_MAP);
+        rc = ORTE_ERR_FAILED_TO_MAP;
+        goto REPORT_ERROR;
+    }
     /* if we are the HNP, we don't need to unpack this buffer - we already
      * have all the required info in our local job array. So just build the
      * array of local children
      */
     if (ORTE_PROC_IS_HNP) {
+        opal_pointer_array_set_item(orte_job_data, ORTE_LOCAL_JOBID(jdata->jobid), jdata);
+
         /* we don't want/need the extra copy of the orte_job_t, but
          * we can't just release it as that will NULL the location in
          * the orte_job_data array. So set the jobid to INVALID to
          * protect the array, and then release the object to free
          * the storage */
-        jdata->jobid = ORTE_JOBID_INVALID;
-        OBJ_RELEASE(jdata);
-        /* get the correct job object */
-        if (NULL == (jdata = orte_get_job_data_object(*job))) {
+      /* jdata->jobid = ORTE_JOBID_INVALID;
+       OBJ_RELEASE(jdata);*/
+       /* get the correct job object */
+       if (NULL == (jdata = orte_get_job_data_object(*job))) {
             ORTE_ERROR_LOG(ORTE_ERR_NOT_FOUND);
             rc = ORTE_ERR_NOT_FOUND;
             goto REPORT_ERROR;
         }
+        opal_output(0, "%s local mapping of job done, num processes in job =%d",
+                    ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), jdata->procs->size);
+
         for (n=0; n < jdata->procs->size; n++) {
             if (NULL == (pptr = (orte_proc_t*)opal_pointer_array_get_item(jdata->procs, n))) {
                 continue;
             }
+            opal_output(0, "Process %d name %s state num %d", n,
+                        ORTE_NAME_PRINT(&pptr->name), pptr->state);
             if (ORTE_PROC_STATE_UNDEF == pptr->state) {
+
                 /* not ready for use yet */
                 continue;
             }
@@ -364,9 +382,9 @@ int orte_odls_base_default_construct_child_list(opal_buffer_t *data,
                 if (!ORTE_FLAG_TEST(pptr, ORTE_PROC_FLAG_LOCAL)) {
                     /* not on the local list */
                     OPAL_OUTPUT_VERBOSE((5, orte_odls_base_framework.framework_output,
-                                         "%s adding proc %s to my local list",
+                                         "%s adding proc %s to my local list num local= %d",
                                          ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
-                                         ORTE_NAME_PRINT(&pptr->name)));
+                                         ORTE_NAME_PRINT(&pptr->name), jdata->num_local_procs+1));
                     /* keep tabs of the number of local procs */
                     jdata->num_local_procs++;
                     /* add this proc to our child list */
@@ -374,7 +392,10 @@ int orte_odls_base_default_construct_child_list(opal_buffer_t *data,
                     ORTE_FLAG_SET(pptr, ORTE_PROC_FLAG_LOCAL);
                     opal_pointer_array_add(orte_local_children, pptr);
                 }
-
+                OPAL_OUTPUT_VERBOSE((5, orte_odls_base_framework.framework_output,
+                                     "%s not adding proc %s to my local list",
+                                     ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
+                                     ORTE_NAME_PRINT(&pptr->name)));
                 /* if the job is in restart mode, the child must not barrier when launched */
                 if (ORTE_FLAG_TEST(jdata, ORTE_JOB_FLAG_RESTART)) {
                     orte_set_attribute(&pptr->attributes, ORTE_PROC_NOBARRIER, ORTE_ATTR_LOCAL, NULL, OPAL_BOOL);
@@ -393,6 +414,7 @@ int orte_odls_base_default_construct_child_list(opal_buffer_t *data,
         rc = ORTE_ERR_FATAL;
         goto REPORT_ERROR;
     }
+
     opal_pointer_array_set_item(orte_job_data, ORTE_LOCAL_JOBID(jdata->jobid), jdata);
 
     /* ensure the map object is present */
@@ -486,13 +508,15 @@ int orte_odls_base_default_construct_child_list(opal_buffer_t *data,
     }
 
  COMPLETE:
+     opal_output(0, "registering namespace with pmix calling pmix_server_register_nspace");
     /* register this job with the PMIx server - need to wait until after we
      * have computed the #local_procs before calling the function */
     if (ORTE_SUCCESS != (rc = orte_pmix_server_register_nspace(jdata))) {
         ORTE_ERROR_LOG(rc);
         goto REPORT_ERROR;
     }
-
+    opal_output(0, " HNP Node job %s originator id is %s", ORTE_JOBID_PRINT(jdata->jobid),
+                ORTE_JOBID_PRINT(jdata->originator.jobid));
     return ORTE_SUCCESS;
 
  REPORT_ERROR:

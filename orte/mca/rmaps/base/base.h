@@ -101,6 +101,11 @@ OBJ_CLASS_DECLARATION(orte_rmaps_base_selected_module_t);
  */
 ORTE_DECLSPEC void orte_rmaps_base_map_job(int fd, short args, void *cbdata);
 
+/*
+ * local mapping of a job post launch msg.
+ */
+ORTE_DECLSPEC int orte_rmaps_base_map_job_local(orte_job_t *jdata);
+
 /**
  * Utility routines to get/set vpid mapping for the job
  */

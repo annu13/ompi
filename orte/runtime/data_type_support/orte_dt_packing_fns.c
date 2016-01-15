@@ -106,7 +106,7 @@ int orte_dt_pack_job(opal_buffer_t *buffer, const void *src,
         }
 
         /* pack the number of procs and offset */
-        if (ORTE_SUCCESS != (rc = opal_dss_pack_buffer(buffer,
+       /* if (ORTE_SUCCESS != (rc = opal_dss_pack_buffer(buffer,
                          (void*)(&(jobs[i]->num_procs)), 1, ORTE_VPID))) {
             ORTE_ERROR_LOG(rc);
             return rc;
@@ -117,7 +117,7 @@ int orte_dt_pack_job(opal_buffer_t *buffer, const void *src,
             return rc;
         }
         /* and the procs, if we have them */
-        if (0 < jobs[i]->num_procs) {
+     /*   if (0 < jobs[i]->num_procs) {
             for (j=0; j < jobs[i]->procs->size; j++) {
                 if (NULL == (proc = (orte_proc_t*)opal_pointer_array_get_item(jobs[i]->procs, j))) {
                     continue;
@@ -128,7 +128,7 @@ int orte_dt_pack_job(opal_buffer_t *buffer, const void *src,
                 }
             }
         }
-
+*/
         /* pack the stdin target */
         if (ORTE_SUCCESS != (rc = opal_dss_pack_buffer(buffer,
                          (void*)(&(jobs[i]->stdin_target)), 1, ORTE_VPID))) {

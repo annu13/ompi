@@ -593,7 +593,7 @@ int orte_daemon(int argc, char *argv[])
         proc->state = ORTE_PROC_STATE_RUNNING;
         proc->app_idx = 0;
         ORTE_FLAG_SET(proc, ORTE_PROC_FLAG_LOCAL);
-
+        opal_output(0, "registering namespace with pmix calling pmix_server_register_nspace");
         /* register the singleton's nspace with our PMIx server */
         if (ORTE_SUCCESS != (ret = orte_pmix_server_register_nspace(jdata))) {
           ORTE_ERROR_LOG(ret);
@@ -609,7 +609,7 @@ int orte_daemon(int argc, char *argv[])
         /* create a string that contains our uri + sysinfo + PMIx server URI envars */
         orte_util_convert_sysinfo_to_string(&sysinfo, orte_local_cpu_type, orte_local_cpu_model);
         asprintf(&tmp, "%s[%s]%s", orte_process_info.my_daemon_uri, sysinfo, nptr);
-	      free(sysinfo);
+          free(sysinfo);
         free(nptr);
 
         /* pass that info to the singleton */

@@ -157,11 +157,13 @@ void orte_plm_base_recv(int status, orte_process_name_t* sender,
             ORTE_ERROR_LOG(rc);
             goto ANSWER_LAUNCH;
         }
-
+        opal_output(0, " HNP Node job %s originator id is %s", ORTE_JOBID_PRINT(jdata->jobid),
+                    ORTE_JOBID_PRINT(jdata->originator.jobid));
         /* record the sender so we know who to respond to */
         jdata->originator.jobid = sender->jobid;
         jdata->originator.vpid = sender->vpid;
-
+        opal_output(0, " HNP Node job %s originator id is %s", ORTE_JOBID_PRINT(jdata->jobid),
+                    ORTE_JOBID_PRINT(jdata->originator.jobid));
         /* get the parent's job object */
         if (NULL != (parent = orte_get_job_data_object(sender->jobid))) {
             /* if the prefix was set in the parent's job, we need to transfer
